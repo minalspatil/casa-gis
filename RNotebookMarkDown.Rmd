@@ -4,12 +4,50 @@ output: html_notebook
 ---
 This is after creating 
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+```{r}
+library(tidyverse)
+library(geojsonio)
+library(sf)
+library(tmap)
+library(tmaptools)
+library(citr)
+#read some data attributes
+LondonData <- read_csv("https://files.datapress.com/london/dataset/ward-profiles-and-atlas/2015-09-24T14:21:24/ward-profiles-excel-version.csv", na = "n/a")
+#read some geometries
+EW <- geojson_read("http://geoportal.statistics.gov.uk/datasets/8edafbe3276d4b56aec60991cbddda50_2.geojson", what = "sp")
+#pull out London
+LondonMap <- EW[grep("^E09",EW@data$lad15cd),]
+#convert to a simple features object
+LondonMapSF <- st_as_sf(LondonMap)
+#append the data to the geometries
+LondonMapSF <- append_data(LondonMapSF,LondonData, key.shp = "lad15cd", key.data = "New code", ignore.duplicates = TRUE)
+#plot a choropleth
+qtm(LondonMapSF, fill = "% Not Born in UK - 2011")
+
+```
+
+```{r}
+install.packages("citr")
+library(citr)
+```
+
+
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
 
 ```{r}
 plot(cars)
 ```
+
+```{r}
+fit = lm(dist ~ speed, data = cars)
+b = coef(fit)
+plot(cars)
+abline(fit)
+``` 
+The slope of the regression is `r b[1]`.
+```
+
 
 Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
