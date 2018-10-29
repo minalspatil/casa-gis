@@ -42,9 +42,8 @@ plot(cars)
 ```{r}
 fit = lm(dist ~ speed, data = cars)
 b = coef(fit)
-plot(cars)
+plot(bikes)
 abline(fit)
-
 ``` 
 The slope of the regression is `r b[1]`.
 ```
