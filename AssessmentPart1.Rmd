@@ -1,57 +1,176 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "AssessmentPart1"
+author: "MINAL S PATIL"
+date: '1 November 2018'
+output: html_document
+
 ---
-This is after creating 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-```{r}
-library(tidyverse)
-library(geojsonio)
-library(sf)
-library(tmap)
-library(tmaptools)
-library(citr)
-#read some data attributes
-LondonData <- read_csv("https://files.datapress.com/london/dataset/ward-profiles-and-atlas/2015-09-24T14:21:24/ward-profiles-excel-version.csv", na = "n/a")
-#read some geometries
-EW <- geojson_read("http://geoportal.statistics.gov.uk/datasets/8edafbe3276d4b56aec60991cbddda50_2.geojson", what = "sp")
-#pull out London
-LondonMap <- EW[grep("^E09",EW@data$lad15cd),]
-#convert to a simple features object
-LondonMapSF <- st_as_sf(LondonMap)
-#append the data to the geometries
-LondonMapSF <- append_data(LondonMapSF,LondonData, key.shp = "lad15cd", key.data = "New code", ignore.duplicates = TRUE)
-#plot a choropleth
-qtm(LondonMapSF, fill = "% Not Born in UK - 2011")
+
+```{r cleanup, echo=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+remove(list = ls(all.names = TRUE))
+
+if (!require(rgeos)) {
+  install.packages("rgeos", repos = "http://cran.us.r-project.org")
+  require(rgeos)
+}
+if (!require(rgdal)) {
+  install.packages("rgdal", repos = "http://cran.us.r-project.org")
+  require(rgdal)
+}
+if (!require(raster)) {
+  install.packages("raster", repos = "http://cran.us.r-project.org")
+  require(raster)
+}
+if(!require(ggplot2)) {
+  install.packages("ggplot2", repos="http://cloud.r-project.org")
+  require(ggplot2)
+}
+if(!require(viridis)) {
+  install.packages("viridis", repos="http://cloud.r-project.org")
+  require(viridis)
+}
+if(!require(dplyr)) {
+  install.packages("dplyr", repos = "https://cloud.r-project.org/")
+  require(dplyr)
+}
+if(!require(gtable)) {
+  install.packages("gtable", repos = "https://cloud.r-project.org/")
+  require(gtable)
+}
+if(!require(grid)) {
+  install.packages("grid", repos = "https://cloud.r-project.org/")
+  require(grid)
+}
+if(!require(readxl)) {
+  install.packages("readxl", repos = "https://cloud.r-project.org/")
+  require(readxl)
+}
+if(!require(magrittr)) {
+  install.packages("magrittr", repos = "https://cloud.r-project.org/")
+  require(magrittr)
+}
+
 
 ```
 
-```{r}
-install.packages("citr")
-library(citr)
+```{r theme, echo=TRUE, message=FALSE, warning=FALSE}
+theme_map <- function(...) {
+  theme_minimal() +
+  theme(
+    text = element_text(family = "mono", color = "#22211d"),
+    axis.line = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    # panel.grid.minor = element_line(color = "#ebebe5", size = 0.2),
+    panel.grid.major = element_line(color = "#ebebe5", size = 0.2),
+    panel.grid.minor = element_blank(),
+    plot.background = element_rect(fill = "#f5f5f2", color = NA), 
+    panel.background = element_rect(fill = "#f5f5f2", color = NA), 
+    legend.background = element_rect(fill = "#f5f5f2", color = NA),
+    panel.border = element_blank(),
+    ...
+  )
+}
+```
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+data <- read.csv("input/avg_age_15.csv", stringsAsFactors = F)
 ```
 
 
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+```{r, echo=TRUE, message=FALSE, warning=FALSE, cache=TRUE}
+gde_15 <- readOGR("input/geodata/gde-1-1-15.shp", layer = "gde-1-1-15")
 
-```{r}
-plot(cars)
+crs(gde_15) <- "+proj=somerc +lat_0=46.95240555555556 
++lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 
++ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs"
+
+map_data_fortified <- fortify(gde_15, region = "BFS_ID") %>% 
+  mutate(id = as.numeric(id))
+
+map_data <- map_data_fortified %>% left_join(data, by = c("id" = "bfs_id"))
+
+# whole municipalities
+gde_15_political <- readOGR("input/geodata/g1g15.shp", layer = "g1g15")
+
+crs(gde_15_political) <- "+proj=somerc +lat_0=46.95240555555556 
++lon_0=7.439583333333333 +k_0=1 +x_0=600000 +y_0=200000 
++ellps=bessel +towgs84=674.374,15.056,405.346,0,0,0,0 +units=m +no_defs"
+map_data_political_fortified <- fortify(gde_15_political, region = "GMDNR") %>% 
+  mutate(id = as.numeric(id))
+map_data_political <- map_data_political_fortified %>% left_join(data, by = c("id" = "bfs_id"))
+map_data_political <- map_data_political[complete.cases(map_data_political),]
+
+relief <- raster("input/geodata/02-relief-georef-clipped-resampled.tif")
+relief_spdf <- as(relief, "SpatialPixelsDataFrame")
+
+relief <- as.data.frame(relief_spdf) %>% 
+  rename(value = `X02.relief.georef.clipped.resampled`)
+# remove unnecessary variables
+rm(relief_spdf)
+rm(gde_15)
+rm(map_data_fortified)
+rm(map_data_political_fortified)
+
+
 ```
 
-```{r}
-fit = lm(dist ~ speed, data = cars)
-b = coef(fit)
-plot(bikes)
-abline(fit)
-``` 
-The slope of the regression is `r b[1]`.
+
+```{r basic-map, message=TRUE, warning=FALSE}
+no_classes <- 6
+labels <- c()
+
+quantiles <- quantile(map_data$avg_age_15, 
+                      probs = seq(0, 1, length.out = no_classes + 1))
+
+# labels
+labels <- c()
+for(idx in 1:length(quantiles)){
+  labels <- c(labels, paste0(round(quantiles[idx], 2), 
+                             " – ", 
+                             round(quantiles[idx + 1], 2)))
+}
+
+labels <- labels[1:length(labels)-1]
+
+
+map_data$Average_Age <- cut(map_data$avg_age_15, 
+                                     breaks = quantiles, 
+                                     labels = labels, 
+                                     include.lowest = T)
+
+p <- ggplot() +
+    geom_polygon(data = map_data, aes(fill = avg_age_15_quantiles, 
+                                      x = long, 
+                                      y = lat, 
+                                      group = group)) +
+    geom_path(data = map_data, aes(x = long, 
+                                   y = lat, 
+                                   group = group), 
+              color = "white", size = 0.1) +
+    coord_equal() + theme_map() +
+    labs(x = NULL,y = NULL,  title = "Average age in Switzerland in 2015")
+
+  scale_fill_viridis(
+    option = "magma",
+    name = "Average age",
+    discrete = T,
+    direction = -1,
+    guide = guide_legend(
+     keyheight = unit(5, units = "mm"),
+     title.position = 'top',
+     reverse = T
+  ))
+p
 ```
 
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
-
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
 
